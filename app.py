@@ -11,7 +11,7 @@ camera = cv2.VideoCapture(0)
 
 # ✅ Database config
 db_config = {
-    'host': 'localhost',
+    'host': '192.168.1.13',
     'user': 'root',
     'password': '',
     'database': 'monitoring'
@@ -37,7 +37,7 @@ def get_room_id_by_stream_url():
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
     # Modify this query based on your actual table/column names
-    cursor.execute("SELECT room_id FROM tbl_room WHERE stream_url = %s", ("http://192.168.1.13:5000/video",))
+    cursor.execute("SELECT room_id FROM tbl_room WHERE stream_url = %s", ("http://192.168.1.7:5000/video",))
     row = cursor.fetchone()
     room_id = row[0] if row else None
     cursor.close()
