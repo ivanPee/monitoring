@@ -1,7 +1,7 @@
 import cv2
 import time
 
-camera = cv2.VideoCapture(1)
+camera = cv2.VideoCapture(0)
 time.sleep(2)  # Wait for camera warm-up
 
 while True:
