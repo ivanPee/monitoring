@@ -9,6 +9,9 @@ import time
 app = Flask(__name__)
 camera = cv2.VideoCapture(1)
 
+if not camera.isOpened():
+    print("Error: Camera failed to open.")
+
 db_config = {
     'host': '192.168.1.13',
     'user': 'root',
@@ -91,6 +94,7 @@ def gen_frames():
     while True:
         success, frame = camera.read()
         if not success:
+            print("Failed to grab frame")
             break
         frame = imutils.resize(frame, width=640)
         orig = frame.copy()
@@ -166,8 +170,7 @@ def index():
 
 @app.route('/video')
 def video():
-    return Response(gen_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
