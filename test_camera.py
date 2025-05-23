@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Response
+from flask import Flask, Response
 import cv2
 import imutils
 import numpy as np
@@ -9,7 +9,7 @@ import time
 app = Flask(__name__)
 camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 
-# ✅ Database config
+# Database config
 db_config = {
     'host': '192.168.1.13',
     'user': 'root',
@@ -17,11 +17,6 @@ db_config = {
     'database': 'monitoring'
 }
 
-# ✅ Load human detector
-hog = cv2.HOGDescriptor()
-hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-
-# ✅ Track detection time
 last_detected = None
 room_id = None  # Will be fetched based on stream_url
 
@@ -36,7 +31,6 @@ def get_room_id_by_stream_url():
     global room_id
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
-    # Modify this query based on your actual table/column names
     cursor.execute("SELECT room_id FROM tbl_room WHERE stream_url = %s", ("http://192.168.1.7:5000/video",))
     row = cursor.fetchone()
     room_id = row[0] if row else None
@@ -91,18 +85,7 @@ def gen_frames():
             frame = imutils.resize(frame, width=640)
             orig = frame.copy()
 
-            # Detect humans
-            (regions, _) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
-
-            # Draw rectangles for humans
-            for (x, y, w, h) in regions:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-            human_detected = len(regions) > 0
-
-            if human_detected:
-                cv2.putText(frame, "Human Detected", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            # Remove human detection here
 
             # Detect light
             brightness = detect_brightness(orig)
@@ -131,7 +114,8 @@ def gen_frames():
                 cv2.putText(frame, "Status: Using", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 255), 2)
                 last_detected = None  # reset
             else:
-                if human_detected or light_on:
+                # ONLY check light status now
+                if light_on:
                     if last_detected is None:
                         last_detected = time.time()
                     elif time.time() - last_detected >= 300:  # 5 minutes
