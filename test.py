@@ -118,7 +118,7 @@ def monitoring_loop():
         brightness = gray.mean()
         print(f"Brightness: {brightness:.2f}")
 
-        light_on = brightness > 100
+        light_on = brightness > 80
         status = check_schedule_status(room_id)
         print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
 
