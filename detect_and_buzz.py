@@ -30,10 +30,12 @@ def buzzer_alert():
 
 def countdown_and_buzz():
     global countdown_started
-    lcd.clear()
-    lcd.write_string("Light detected!")
     print("Light detected! Starting countdown...")
-    time.sleep(60)  # 1 minute countdown
+    for i in range(60, 0, -1):
+        lcd.clear()
+        lcd.write_string(f"Light detected!\nCountdown: {i}s")
+        print(f"Countdown: {i} seconds remaining")
+        time.sleep(1)
     print("Countdown done. Buzzing...")
     buzzer_alert()
     countdown_started = False
@@ -57,4 +59,9 @@ try:
         time.sleep(0.5)
 
 except KeyboardInterrupt:
-    prin
+    print("Exiting...")
+
+finally:
+    lcd.clear()
+    camera.release()
+    GPIO.cleanup()
