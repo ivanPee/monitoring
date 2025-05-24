@@ -5,6 +5,7 @@ import atexit
 import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
 import threading
+import spidev
 
 # -------------------- GPIO + LCD SETUP --------------------
 BUZZER_PIN = 18
@@ -13,21 +14,64 @@ GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
 lcd = CharLCD('PCF8574', 0x27)
 
-# Buzzer alert function (in background thread)
-def buzz_and_display():
-    for i in range(5):
-        GPIO.output(BUZZER_PIN, GPIO.HIGH)
-        lcd.clear()
-        lcd.write_string(f'Buzzing {i+1}')
-        time.sleep(3)
+# -------------------- SPI + LIGHT SENSOR SETUP --------------------
+spi = spidev.SpiDev()
+spi.open(0, 0)
+spi.max_speed_hz = 1350000
 
-        GPIO.output(BUZZER_PIN, GPIO.LOW)
-        lcd.clear()
-        lcd.write_string('Waiting...')
-        time.sleep(3)
+# Light Detection Threshold
+LIGHT_THRESHOLD = 300
+countdown_seconds = 60
+countdown_active = False
+countdown_lock = threading.Lock()
+
+def read_light_channel(channel=0):
+    adc = spi.xfer2([1, (8 + channel) << 4, 0])
+    value = ((adc[1] & 3) << 8) + adc[2]
+    return value
+
+def trigger_buzzer():
+    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    lcd.clear()
+    lcd.write_string("🔔 Buzzing!")
+    time.sleep(3)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
     lcd.clear()
 
-# -------------------- CAMERA + FLASK SETUP --------------------
+def light_monitor():
+    global countdown_active
+
+    while True:
+        light_level = read_light_channel()
+        if light_level > LIGHT_THRESHOLD:
+            with countdown_lock:
+                if not countdown_active:
+                    countdown_active = True
+                    threading.Thread(target=countdown_and_buzz, daemon=True).start()
+        time.sleep(2)
+
+def countdown_and_buzz():
+    global countdown_active
+
+    lcd.clear()
+    lcd.write_string("Light Detected!")
+    for i in range(countdown_seconds, 0, -1):
+        light_level = read_light_channel()
+        if light_level < LIGHT_THRESHOLD:
+            lcd.clear()
+            lcd.write_string("Light Gone!")
+            countdown_active = False
+            time.sleep(2)
+            lcd.clear()
+            return
+        lcd.clear()
+        lcd.write_string(f"Countdown: {i}s")
+        time.sleep(1)
+
+    trigger_buzzer()
+    countdown_active = False
+
+# -------------------- CAMERA + FLASK --------------------
 app = Flask(__name__)
 camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
@@ -57,15 +101,9 @@ def index():
         <body>
             <h1>Camera Stream</h1>
             <img src="/video_feed" width="640" height="480" /><br/>
-            <a href="/buzz">Trigger Buzzer</a>
         </body>
     </html>
     """
-
-@app.route('/buzz')
-def buzz():
-    threading.Thread(target=buzz_and_display).start()
-    return "🔔 Buzzer triggered!"
 
 # -------------------- CLEANUP --------------------
 @atexit.register
@@ -74,7 +112,9 @@ def cleanup():
     lcd.clear()
     GPIO.cleanup()
     camera.release()
+    spi.close()
 
-# -------------------- RUN APP --------------------
+# -------------------- START --------------------
 if __name__ == '__main__':
+    threading.Thread(target=light_monitor, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
