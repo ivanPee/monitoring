@@ -42,9 +42,12 @@ def get_room_id_by_stream_url():
 
 # --- Check Schedule ---
 def check_schedule_status(room_id):
-    now = datetime.datetime.now()
+    tz = pytz.timezone('Asia/Manila')
+    now = datetime.datetime.now(tz)
+
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
+
     try:
         print("current_day:", current_day)
         print("current_time:", current_time)
