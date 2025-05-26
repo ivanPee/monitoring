@@ -45,7 +45,10 @@ def get_room_id_by_stream_url():
 def check_schedule_status(room_id):
     tz = pytz.timezone('Asia/Manila')
     now = datetime.datetime.now(tz)
-
+    
+    print("UTC Time:", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+    print("Local Time (Asia/Manila):", now.strftime("%Y-%m-%d %H:%M:%S"))
+    
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
 
