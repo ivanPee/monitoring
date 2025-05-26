@@ -122,22 +122,24 @@ def monitoring_loop():
         status = check_schedule_status(room_id)
         print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
 
-        if status == "Using":
+        if status == "Occupied":
+            lcd.clear()
+            lcd.write_string("Occupied")
+            time.sleep(1)  # Slight delay to reduce LCD flicker
+            continue  # Skip the rest of the loop (no countdown, no checks)
+
+        # Room is NOT occupied, proceed with logic
+        if light_on:
+            if not countdown_started:
+                countdown_started = True
+                stop_countdown_flag = False
+                threading.Thread(target=countdown_and_buzz).start()
+        else:
             if countdown_started:
                 stop_countdown_flag = True
-            lcd.clear()
-            lcd.write_string("Room in use")
-        else:
-            if light_on:
-                if not countdown_started:
-                    countdown_started = True
-                    stop_countdown_flag = False
-                    threading.Thread(target=countdown_and_buzz).start()
-            else:
-                if countdown_started:
-                    stop_countdown_flag = True
+                countdown_started = False
 
-        time.sleep(0.5)
+        time.sleep(2)
 
 # --- Video Streaming ---
 def gen_frames():
