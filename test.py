@@ -44,15 +44,10 @@ def get_room_id_by_stream_url():
 def check_schedule_status(room_id):
     now = datetime.datetime.now()
     
-    print("UTC Time:", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
-    print("Local Time (Asia/Manila):", now.strftime("%Y-%m-%d %H:%M:%S"))
-    
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
 
     try:
-        print("current_day:", current_day)
-        print("current_time:", current_time)
         res = requests.get('http://192.168.1.13/monitoring/ajax/check_schedule.php', params={
             'room_id': room_id,
             'schedule_day': current_day,
