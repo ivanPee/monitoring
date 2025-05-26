@@ -32,7 +32,7 @@ def get_room_id_by_stream_url():
     global room_id
     try:
         res = requests.get('http://192.168.1.13/monitoring/ajax/get_room_id.php', params={
-            'url': 'http://192.168.1.7:5000/video_feed'
+            'code': 'RM123MB'
         })
         if res.status_code == 200:
             room_id = res.json().get('room_id')
