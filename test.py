@@ -5,7 +5,6 @@ import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
 import requests
 import datetime
-import pytz
 from flask import Flask, Response
 import atexit
 
@@ -43,8 +42,7 @@ def get_room_id_by_stream_url():
 
 # --- Check Schedule ---
 def check_schedule_status(room_id):
-    tz = pytz.timezone('Asia/Manila')
-    now = datetime.datetime.now(tz)
+    now = datetime.datetime.now()
     
     print("UTC Time:", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
     print("Local Time (Asia/Manila):", now.strftime("%Y-%m-%d %H:%M:%S"))
