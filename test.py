@@ -51,7 +51,7 @@ room_id = None
 def get_room_id_by_stream_url():
     global room_id
     try:
-        res = requests.get('http://192.168.1.13/monitoring/ajax/get_room_id.php', params={
+        res = requests.get('http://192.168.1.4/monitoring/ajax/get_room_id.php', params={
             'code': 'RM123MB'
         })
         if res.status_code == 200:
@@ -66,7 +66,7 @@ def check_schedule_status(room_id):
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
     try:
-        res = requests.get('http://192.168.1.13/monitoring/ajax/check_schedule.php', params={
+        res = requests.get('http://192.168.1.4/monitoring/ajax/check_schedule.php', params={
             'room_id': room_id,
             'schedule_day': current_day,
             'current_time': current_time
@@ -81,7 +81,7 @@ def check_schedule_status(room_id):
 # --- Flag Schedule ---
 def handle_detection_action():
     try:
-        res = requests.post('http://192.168.1.13/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
+        res = requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
         print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
     except Exception as e:
         print("Error flagging schedule:", e)
