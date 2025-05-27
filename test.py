@@ -7,6 +7,7 @@ import requests
 import datetime
 from flask import Flask, Response
 import atexit
+import numpy as np
 
 # --- GPIO and LCD setup ---
 BUZZER_PIN = 18
@@ -22,9 +23,6 @@ app = Flask(__name__)
 camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera_lock = threading.Lock()
 
-# --- Background Subtractor ---
-back_sub = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
-
 # --- HOG Human Detector Setup ---
 hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
@@ -33,6 +31,26 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 countdown_started = False
 stop_countdown_flag = False
 room_id = None
+
+# --- For motion detection ---
+prev_gray = None
+
+# --- Shared status for LCD display ---
+lcd_status_lock = threading.Lock()
+lcd_status_text = "Starting..."
+
+def set_lcd_status(text):
+    global lcd_status_text
+    with lcd_status_lock:
+        lcd_status_text = text
+
+def update_lcd():
+    while True:
+        with lcd_status_lock:
+            text = lcd_status_text
+        lcd.clear()
+        lcd.write_string(text)
+        time.sleep(1)  # update every 1 sec
 
 # --- Room ID ---
 def get_room_id_by_stream_url():
@@ -78,12 +96,10 @@ def handle_detection_action():
 # --- Alert and Countdown ---
 def buzzer_alert():
     GPIO.output(BUZZER_PIN, GPIO.HIGH)
-    lcd.clear()
-    lcd.write_string("Buzzing now!")
+    set_lcd_status("Buzzing now!")
     time.sleep(10)
     GPIO.output(BUZZER_PIN, GPIO.LOW)
-    lcd.clear()
-    lcd.write_string("Monitoring...")
+    set_lcd_status("Monitoring...")
 
 def countdown_and_buzz():
     global countdown_started, stop_countdown_flag
@@ -93,17 +109,14 @@ def countdown_and_buzz():
     for i in range(60, 0, -1):
         if stop_countdown_flag:
             print("Detection Stopped.")
-            lcd.clear()
-            lcd.write_string("Countdown cancelled")
+            set_lcd_status("Countdown cancelled")
             time.sleep(2)
-            lcd.clear()
-            lcd.write_string("Monitoring...")
+            set_lcd_status("Monitoring...")
             countdown_started = False
             stop_countdown_flag = False
             return
 
-        lcd.clear()
-        lcd.write_string(f"Countdown: {i}s")
+        set_lcd_status(f"Countdown: {i}s")
         time.sleep(1)
 
     handle_detection_action()
@@ -112,9 +125,8 @@ def countdown_and_buzz():
 
 # --- Monitoring Thread ---
 def monitoring_loop():
-    global countdown_started, stop_countdown_flag
-    lcd.clear()
-    lcd.write_string("Monitoring...")
+    global countdown_started, stop_countdown_flag, prev_gray
+    set_lcd_status("Monitoring...")
     get_room_id_by_stream_url()
 
     while True:
@@ -123,32 +135,53 @@ def monitoring_loop():
         if not ret:
             continue
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        resized_frame = cv2.resize(frame, (320, 240))
+        gray = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2GRAY)
         brightness = gray.mean()
-        print(f"Brightness: {brightness:.2f}")
+        # print(f"Brightness: {brightness:.2f}")
 
         light_on = brightness > 80
         status = check_schedule_status(room_id)
-        print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
+        # print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
+
+        # Simple motion detection by frame difference
+        motion_detected = False
+        if prev_gray is not None:
+            diff = cv2.absdiff(gray, prev_gray)
+            _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+            motion_area = cv2.countNonZero(thresh)
+            motion_detected = motion_area > 500  # Tune threshold if needed
+        prev_gray = gray
+
+        # Human detection on resized frame
+        rects, weights = hog.detectMultiScale(resized_frame, winStride=(8,8), padding=(8,8), scale=1.05)
+        human_detected = len(rects) > 0
+
+        # Update LCD status by priority: Human > Motion > Light > Normal
+        if human_detected:
+            set_lcd_status("Human detected")
+        elif motion_detected:
+            set_lcd_status("Motion detected")
+        elif light_on:
+            set_lcd_status("Light detected")
+        else:
+            set_lcd_status("Monitoring...")
 
         if status == "Occupied":
-            lcd.clear()
-            lcd.write_string("Occupied")
-            time.sleep(1)  # Slight delay to reduce LCD flicker
-            continue  # Skip rest (no countdown)
+            set_lcd_status("Occupied")
+            time.sleep(1)
+            continue
 
-        # Room NOT occupied
-        if light_on:
-            if not countdown_started:
-                countdown_started = True
-                stop_countdown_flag = False
-                threading.Thread(target=countdown_and_buzz).start()
-        else:
-            if countdown_started:
-                stop_countdown_flag = True
-                countdown_started = False
+        # Countdown logic on light
+        if light_on and not countdown_started:
+            countdown_started = True
+            stop_countdown_flag = False
+            threading.Thread(target=countdown_and_buzz).start()
+        elif not light_on and countdown_started:
+            stop_countdown_flag = True
+            countdown_started = False
 
-        time.sleep(2)
+        time.sleep(1)
 
 # --- Video Streaming with human detection and green boxes ---
 def gen_frames():
@@ -160,14 +193,11 @@ def gen_frames():
 
         frame = cv2.resize(frame, (320, 240))
 
-        # Run human detection (HOG) on resized frame
+        # Detect humans and draw green boxes
         rects, weights = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
-
-        # Draw green rectangles around detected humans
-        for (x, y, w, h) in rects:
-            # Optionally filter by weight threshold to reduce false positives
-            if weights is None or weights[0] > 0.5:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        for i, (x, y, w, h) in enumerate(rects):
+            # You can filter by weights[i] if needed (e.g., >0.5)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         frame_bytes = buffer.tobytes()
@@ -190,6 +220,10 @@ def index():
         </body>
     </html>
     """
+
+# --- Start LCD updater thread ---
+lcd_thread = threading.Thread(target=update_lcd, daemon=True)
+lcd_thread.start()
 
 # --- Cleanup ---
 @atexit.register
