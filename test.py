@@ -26,10 +26,7 @@ camera_lock = threading.Lock()
 # --- MobileNet SSD for person detection ---
 deploy_path = "deploy.prototxt"
 weights_path = "res10_300x300_ssd_iter_140000.caffemodel"
-net = cv2.dnn.readNetFromCaffe(
-    cv2.data.haarcascades + "../dnn/deploy.prototxt",
-    cv2.data.haarcascades + "../dnn/res10_300x300_ssd_iter_140000.caffemodel"
-)
+net = cv2.dnn.readNetFromCaffe(deploy_path, weights_path)
 CONFIDENCE_THRESHOLD = 0.5
 
 def detect_person(frame):
