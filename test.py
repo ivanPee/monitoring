@@ -106,7 +106,7 @@ def monitoring_loop():
         brightness = gray.mean()
 
         status = check_schedule_status(room_id)
-        light_on = brightness > 80
+        light_on = brightness > 110
         motion_detected = False
         human_detected = False
 
@@ -119,7 +119,13 @@ def monitoring_loop():
         prev_gray = gray
 
         # Human Detection
-        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
+        # rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
+        rects, weights = hog.detectMultiScale(
+            frame_resized,
+            winStride=(4, 4),
+            padding=(8, 8),
+            scale=1.02
+        )
         human_detected = len(rects) > 0
 
         # --- Print & LCD status logic ---
