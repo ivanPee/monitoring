@@ -119,7 +119,7 @@ def monitoring_loop():
         prev_gray = gray
 
         # Human Detection (improved settings)
-        resized = cv2.resize(frame, (320, 240))
+        resized = cv2.resize(frame, (640, 480))
         gray_resized = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
 
         rects, weights = hog.detectMultiScale(
