@@ -103,7 +103,15 @@ def monitoring_loop():
 
         frame_resized = cv2.resize(frame, (320, 240))
         gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
-        brightness = gray.mean()
+        blurred = cv2.GaussianBlur(gray, (11, 11), 0)
+        
+        # Find brightest point
+        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(blurred)
+        
+        # Get brightness of a 20x20 patch around brightest point
+        x, y = maxLoc
+        patch = gray[max(0, y-10):y+10, max(0, x-10):x+10]
+        brightness = patch.mean() if patch.size > 0 else 0
         
         status = check_schedule_status(room_id)
         light_on = brightness > 110
