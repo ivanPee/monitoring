@@ -119,7 +119,12 @@ def monitoring_loop():
         prev_gray = gray
 
         # Human Detection
-        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
+        rects, weights = hog.detectMultiScale(
+            frame_resized,
+            winStride=(4, 4),
+            padding=(8, 8),
+            scale=1.02
+        )
         human_detected = len(rects) > 0
 
         # --- Print & LCD status logic ---
