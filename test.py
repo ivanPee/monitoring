@@ -10,7 +10,9 @@ import atexit
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.service import Service
 import json
+import time
 
 # --- GPIO and LCD setup ---
 BUZZER_PIN = 18
@@ -37,21 +39,24 @@ def get_room_id_by_stream_url():
 
     options = Options()
     options.headless = True
-    driver = webdriver.Firefox(options=options)
+
+    # Provide explicit path to Firefox and geckodriver
+    service = Service(executable_path="/usr/local/bin/geckodriver")  # adjust path if different
+
+    # Optional: explicitly set Firefox binary (not always required if it's in PATH)
+    options.binary_location = "/usr/bin/firefox"  # or wherever your firefox-esr is installed
+
+    driver = webdriver.Firefox(service=service, options=options)
 
     try:
         url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
         driver.get(url)
+        time.sleep(3)  # Wait for JS to redirect
 
-        time.sleep(3)  # Let JavaScript run
-
-        try:
-            raw_text = driver.find_element(By.TAG_NAME, "pre").text
-            data = json.loads(raw_text)
-            room_id = data.get("room_id")
-            print("Room ID:", room_id)
-        except Exception as e:
-            print("Failed to extract room_id:", e)
+        raw_text = driver.find_element(By.TAG_NAME, "pre").text
+        data = json.loads(raw_text)
+        room_id = data.get("room_id")
+        print("Room ID:", room_id)
 
     except Exception as e:
         print("Error accessing room ID URL:", e)
