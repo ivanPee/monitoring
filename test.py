@@ -9,6 +9,10 @@ from flask import Flask, Response
 import atexit
 import json
 import logging
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import threading
 
 # Setup logging for easier debugging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(message)s')
@@ -42,30 +46,37 @@ HEADERS = {
 def get_room_id_by_stream_url():
     global room_id
     try:
-        res = requests.get(
-            'https://monitoring.42web.io/ajax/get_room_id.php',
-            params={'code': 'RM123MB'},
-            headers=HEADERS,
-            timeout=10
-        )
-        res.raise_for_status()
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+
+        driver = webdriver.Chrome(options=options)
 
         try:
-            data = res.json()
-        except ValueError as ve:
-            logging.error(f"Invalid JSON response: {res.text}")
-            return
+            url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
+            driver.get(url)
 
-        rid = data.get('room_id')
-        if rid:
-            with room_id_lock:
-                room_id = rid
-            logging.info(f"Room ID obtained: {room_id}")
-        else:
-            logging.warning(f"Room ID not found in response: {data}")
+            # Get the full text of the response
+            body = driver.find_element(By.TAG_NAME, "body").text
 
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error getting room_id: {e}")
+            try:
+                data = json.loads(body)
+                rid = data.get('room_id')
+                if rid:
+                    with room_id_lock:
+                        room_id = rid
+                    logging.info(f"Room ID obtained: {room_id}")
+                else:
+                    logging.warning(f"Room ID not found in response: {data}")
+            except json.JSONDecodeError:
+                logging.error(f"Failed to parse JSON from response: {body}")
+
+        finally:
+            driver.quit()
+
+    except Exception as e:
+        logging.error(f"Error getting room_id with Selenium: {e}")
 
 # --- Check Schedule ---
 def check_schedule_status(rid):
