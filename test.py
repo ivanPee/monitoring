@@ -127,10 +127,10 @@ def monitoring_loop():
         #     scale=1.05
         # )
 
-        filtered_rects = []
-        for i, (x, y, w, h) in enumerate(rects):
-            if weights[i] > 0.6:  # Adjust threshold based on test (0.5–0.7 usually works well)
-                filtered_rects.append((x, y, w, h))
+        # filtered_rects = []
+        # for i, (x, y, w, h) in enumerate(rects):
+        #     if weights[i] > 0.6:  # Adjust threshold based on test (0.5–0.7 usually works well)
+        #         filtered_rects.append((x, y, w, h))
         human_detected = len(filtered_rects) > 0
 
         # --- Print & LCD status logic ---
