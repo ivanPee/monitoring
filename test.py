@@ -8,8 +8,9 @@ import datetime
 from flask import Flask, Response
 import atexit
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
+import json
 
 # --- GPIO and LCD setup ---
 BUZZER_PIN = 18
@@ -30,35 +31,30 @@ countdown_started = False
 stop_countdown_flag = False
 room_id = None
 
-# --- Get Room ID using Selenium ---
+# --- Get Room ID using Firefox & Selenium ---
 def get_room_id_by_stream_url():
     global room_id
 
     options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')
-
-    driver = webdriver.Chrome(options=options)
+    options.headless = True
+    driver = webdriver.Firefox(options=options)
 
     try:
         url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
         driver.get(url)
 
-        # Let JavaScript run
-        time.sleep(3)
+        time.sleep(3)  # Let JavaScript run
 
-        # Extract room_id from the page source
-        page_source = driver.page_source
         try:
-            data = driver.find_element(By.TAG_NAME, "pre").text
+            raw_text = driver.find_element(By.TAG_NAME, "pre").text
+            data = json.loads(raw_text)
             room_id = data.get("room_id")
             print("Room ID:", room_id)
         except Exception as e:
-            print("Failed to extract JSON from browser:", e)
+            print("Failed to extract room_id:", e)
 
     except Exception as e:
-        print("Error with Selenium:", e)
+        print("Error accessing room ID URL:", e)
 
     finally:
         driver.quit()
@@ -149,10 +145,9 @@ def monitoring_loop():
         if status == "Occupied":
             lcd.clear()
             lcd.write_string("Occupied")
-            time.sleep(1)  # Slight delay to reduce LCD flicker
-            continue  # Skip the rest of the loop (no countdown, no checks)
+            time.sleep(1)
+            continue
 
-        # Room is NOT occupied, proceed with logic
         if light_on:
             if not countdown_started:
                 countdown_started = True
