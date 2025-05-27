@@ -7,9 +7,8 @@ import requests
 import datetime
 from flask import Flask, Response
 import atexit
-import numpy as np
 
-# GPIO and LCD
+# --- GPIO and LCD setup ---
 BUZZER_PIN = 18
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUZZER_PIN, GPIO.OUT)
@@ -18,92 +17,98 @@ lcd = CharLCD('PCF8574', 0x27)
 lcd.clear()
 lcd.write_string("Starting...")
 
-# Flask
+# --- Flask App and Camera ---
 app = Flask(__name__)
-camera = cv2.VideoCapture(0)
-camera.set(3, 320)  # width
-camera.set(4, 240)  # height
+camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera_lock = threading.Lock()
 
-# Lightweight Face Detection
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-
-# Globals
+# --- Control Variables ---
 countdown_started = False
 stop_countdown_flag = False
 room_id = None
 
-# Helper: Get Room ID
-def get_room_id():
+# --- Room ID ---
+def get_room_id_by_stream_url():
     global room_id
     try:
-        r = requests.get('http://192.168.1.4/monitoring/ajax/get_room_id.php', params={'code': 'RM123MB'})
-        if r.ok:
-            room_id = r.json().get('room_id')
-    except: pass
+        res = requests.get('http://192.168.1.4/monitoring/ajax/get_room_id.php', params={
+            'code': 'RM123MB'
+        })
+        if res.status_code == 200:
+            room_id = res.json().get('room_id')
+            print("Room ID:", room_id)
+    except Exception as e:
+        print("Error getting room_id:", e)
 
-# Helper: Check Schedule
+# --- Check Schedule ---
 def check_schedule_status(room_id):
+    now = datetime.datetime.now()
+    
+    current_day = (now.weekday() + 1) % 7 or 7
+    current_time = now.strftime("%H:%M:%S")
+
     try:
-        now = datetime.datetime.now()
         res = requests.get('http://192.168.1.4/monitoring/ajax/check_schedule.php', params={
             'room_id': room_id,
-            'schedule_day': (now.weekday() + 1) % 7 or 7,
-            'current_time': now.strftime("%H:%M:%S")
+            'schedule_day': current_day,
+            'current_time': current_time
         })
-        if res.ok:
-            return res.json().get('status')
-    except: pass
+        data = res.json()
+        if data['success']:
+            return data['status']
+    except Exception as e:
+        print("Schedule check error:", e)
     return None
 
-# Post Flag
+# --- Flag Schedule ---
 def handle_detection_action():
     try:
-        requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
-    except: pass
+        res = requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
+        print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
+    except Exception as e:
+        print("Error flagging schedule:", e)
 
-# Buzzer Alert
+# --- Alert and Countdown ---
 def buzzer_alert():
     GPIO.output(BUZZER_PIN, GPIO.HIGH)
     lcd.clear()
-    lcd.write_string("Buzzing!")
-    time.sleep(5)
+    lcd.write_string("Buzzing now!")
+    time.sleep(10)
     GPIO.output(BUZZER_PIN, GPIO.LOW)
+    lcd.clear()
+    lcd.write_string("Monitoring...")
 
-# Countdown Logic
 def countdown_and_buzz():
     global countdown_started, stop_countdown_flag
-    for i in range(30, 0, -1):
+
+    print("Light detected! Starting countdown...")
+
+    for i in range(60, 0, -1):
         if stop_countdown_flag:
+            print("Detection Stopped.")
             lcd.clear()
-            lcd.write_string("Cancelled")
-            time.sleep(1)
+            lcd.write_string("Countdown cancelled")
+            time.sleep(2)
             lcd.clear()
-            lcd.write_string("Monitoring")
+            lcd.write_string("Monitoring...")
             countdown_started = False
             stop_countdown_flag = False
             return
+
         lcd.clear()
-        lcd.write_string(f"Countdown: {i}")
+        lcd.write_string(f"Countdown: {i}s")
         time.sleep(1)
 
     handle_detection_action()
     buzzer_alert()
     countdown_started = False
 
-# Detection Logic
-def detect_face_and_light(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    brightness = gray.mean()
-    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-    return len(faces) > 0, brightness > 80
-
-# Main Monitoring Loop
+# --- Monitoring Thread ---
 def monitoring_loop():
     global countdown_started, stop_countdown_flag
-    get_room_id()
     lcd.clear()
     lcd.write_string("Monitoring...")
+    get_room_id_by_stream_url()
 
     while True:
         with camera_lock:
@@ -111,52 +116,70 @@ def monitoring_loop():
         if not ret:
             continue
 
-        person, light_on = detect_face_and_light(frame)
-        status = check_schedule_status(room_id)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        brightness = gray.mean()
+        print(f"Brightness: {brightness:.2f}")
 
-        print(f"Person: {person}, Light: {'ON' if light_on else 'OFF'}, Status: {status}")
+        light_on = brightness > 80
+        status = check_schedule_status(room_id)
+        print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
 
         if status == "Occupied":
             lcd.clear()
             lcd.write_string("Occupied")
-            time.sleep(1)
-            continue
+            time.sleep(1)  # Slight delay to reduce LCD flicker
+            continue  # Skip the rest of the loop (no countdown, no checks)
 
-        if person and light_on and not countdown_started:
-            countdown_started = True
-            stop_countdown_flag = False
-            threading.Thread(target=countdown_and_buzz).start()
-        elif not (person and light_on) and countdown_started:
-            stop_countdown_flag = True
+        # Room is NOT occupied, proceed with logic
+        if light_on:
+            if not countdown_started:
+                countdown_started = True
+                stop_countdown_flag = False
+                threading.Thread(target=countdown_and_buzz).start()
+        else:
+            if countdown_started:
+                stop_countdown_flag = True
+                countdown_started = False
 
-        time.sleep(1)
+        time.sleep(2)
 
-# Video Feed for Web
+# --- Video Streaming ---
 def gen_frames():
     while True:
         with camera_lock:
             success, frame = camera.read()
         if not success:
-            continue
-        _, buffer = cv2.imencode('.jpg', frame)
+            break
+        frame = cv2.resize(frame, (320, 240))
+        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-        time.sleep(0.15)
-
-@app.route('/')
-def index():
-    return "<h1>Raspberry Pi Monitoring</h1><img src='/video_feed'>"
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.1)
 
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/')
+def index():
+    return """
+    <html>
+        <body>
+            <h1>Camera Stream</h1>
+            <img src="/video_feed" width="640" height="480" />
+        </body>
+    </html>
+    """
+
+# --- Cleanup ---
 @atexit.register
 def cleanup():
+    lcd.clear()
     camera.release()
     GPIO.cleanup()
-    lcd.clear()
 
-if __name__ == "__main__":
+# --- Main ---
+if __name__ == '__main__':
     threading.Thread(target=monitoring_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
