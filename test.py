@@ -121,7 +121,7 @@ def monitoring_loop():
         # Human Detection
         # rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
         rects, weights = hog.detectMultiScale(
-            frame_resized,
+            frame,
             winStride=(4, 4),
             padding=(8, 8),
             scale=1.02
@@ -180,12 +180,6 @@ def gen_frames():
 
         # Human detection boxes
         rects, _ = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
-        # rects, weights = hog.detectMultiScale(
-        #     frame,
-        #     winStride=(4, 4),
-        #     padding=(8, 8),
-        #     scale=1.02
-        # )
         for (x, y, w, h) in rects:
             cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
