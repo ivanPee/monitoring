@@ -42,7 +42,7 @@ HEADERS = {
 # --- Get Room ID ---
 def get_room_id_by_stream_url():
     global room_id
-    url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
+    url = "http://192.168.1.4/monitoring/ajax/get_room_id.php?code=RM123MB"
     try:
         res = requests.get(url, headers=HEADERS, timeout=5)
         res.raise_for_status()
@@ -68,7 +68,7 @@ def check_schedule_status(rid):
 
     try:
         res = requests.get(
-            'https://monitoring.42web.io/ajax/check_schedule.php',
+            'http://192.168.1.4/monitoring/ajax/check_schedule.php',
             params={
                 'room_id': rid,
                 'schedule_day': current_day,
@@ -97,7 +97,7 @@ def handle_detection_action():
 
     try:
         res = requests.post(
-            'https://monitoring.42web.io/ajax/flag_schedule.php',
+            'http://192.168.1.4/monitoring/ajax/flag_schedule.php',
             json={'room_id': rid},
             headers=HEADERS,
             timeout=5
