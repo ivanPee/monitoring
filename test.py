@@ -7,10 +7,6 @@ import requests
 import datetime
 from flask import Flask, Response
 import atexit
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.service import Service
 import json
 import time
 
@@ -33,37 +29,26 @@ countdown_started = False
 stop_countdown_flag = False
 room_id = None
 
-# --- Get Room ID using Firefox & Selenium ---
+# --- Get Room ID ---
 def get_room_id_by_stream_url():
     global room_id
-
-    options = Options()
-    options.headless = True
-
-    # Provide explicit path to Firefox and geckodriver
-    service = Service(executable_path="/usr/local/bin/geckodriver")  # adjust path if different
-
-    # Optional: explicitly set Firefox binary (not always required if it's in PATH)
-    options.binary_location = "/usr/bin/firefox"  # or wherever your firefox-esr is installed
-
-    driver = webdriver.Firefox(service=service, options=options)
-
     try:
-        url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
-        driver.get(url)
-        time.sleep(3)  # Wait for JS to redirect
+        res = requests.get('https://monitoring.42web.io/ajax/get_room_id.php', params={
+            'code': 'RM123MB'
+        }, timeout=10)  # timeout to avoid hanging
 
-        raw_text = driver.find_element(By.TAG_NAME, "pre").text
-        data = json.loads(raw_text)
-        room_id = data.get("room_id")
-        print("Room ID:", room_id)
+        res.raise_for_status()  # Raise error if HTTP request failed (4xx or 5xx)
 
-    except Exception as e:
-        print("Error accessing room ID URL:", e)
+        data = res.json()  # Parse JSON response
+        room_id = data.get('room_id')
 
-    finally:
-        driver.quit()
+        if room_id:
+            print("Room ID:", room_id)
+        else:
+            print("Room ID not found in response:", data)
 
+    except requests.exceptions.RequestException as e:
+        print("Error getting room_id:", e)
 # --- Check Schedule ---
 def check_schedule_status(room_id):
     now = datetime.datetime.now()
