@@ -9,9 +9,6 @@ from flask import Flask, Response
 import atexit
 import json
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 import threading
 
 # Setup logging for easier debugging
@@ -45,38 +42,22 @@ HEADERS = {
 # --- Get Room ID ---
 def get_room_id_by_stream_url():
     global room_id
+    url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
     try:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-
-        driver = webdriver.Chrome(options=options)
-
-        try:
-            url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
-            driver.get(url)
-
-            # Get the full text of the response
-            body = driver.find_element(By.TAG_NAME, "body").text
-
-            try:
-                data = json.loads(body)
-                rid = data.get('room_id')
-                if rid:
-                    with room_id_lock:
-                        room_id = rid
-                    logging.info(f"Room ID obtained: {room_id}")
-                else:
-                    logging.warning(f"Room ID not found in response: {data}")
-            except json.JSONDecodeError:
-                logging.error(f"Failed to parse JSON from response: {body}")
-
-        finally:
-            driver.quit()
-
-    except Exception as e:
-        logging.error(f"Error getting room_id with Selenium: {e}")
+        res = requests.get(url, headers=HEADERS, timeout=5)
+        res.raise_for_status()
+        data = res.json()
+        rid = data.get('room_id')
+        if rid:
+            with room_id_lock:
+                room_id = rid
+            logging.info(f"Room ID obtained: {room_id}")
+        else:
+            logging.warning(f"Room ID not found in response: {data}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error getting room_id with requests: {e}")
+    except json.JSONDecodeError:
+        logging.error(f"Failed to parse JSON from response: {res.text}")
 
 # --- Check Schedule ---
 def check_schedule_status(rid):
