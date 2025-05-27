@@ -105,9 +105,6 @@ def monitoring_loop():
         gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
         brightness = gray.mean()
         
-        patch = gray[max(0, y-10):y+10, max(0, x-10):x+10]
-        brightness = patch.mean() if patch.size > 0 else 0
-
         status = check_schedule_status(room_id)
         light_on = brightness > 110
         motion_detected = False
