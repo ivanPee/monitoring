@@ -179,13 +179,13 @@ def gen_frames():
         frame = cv2.resize(frame, (320, 240))
 
         # Human detection boxes
-        # rects, _ = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
-        rects, weights = hog.detectMultiScale(
-            frame,
-            winStride=(4, 4),
-            padding=(8, 8),
-            scale=1.02
-        )
+        rects, _ = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
+        # rects, weights = hog.detectMultiScale(
+        #     frame,
+        #     winStride=(4, 4),
+        #     padding=(8, 8),
+        #     scale=1.02
+        # )
         for (x, y, w, h) in rects:
             cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
