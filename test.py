@@ -122,11 +122,16 @@ def monitoring_loop():
         # rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
         rects, weights = hog.detectMultiScale(
             frame,
-            winStride=(4, 4),
-            padding=(8, 8),
-            scale=1.02
+            winStride=(8, 8),
+            padding=(16, 16),
+            scale=1.05
         )
-        human_detected = len(rects) > 0
+
+        filtered_rects = []
+        for i, (x, y, w, h) in enumerate(rects):
+            if weights[i] > 0.6:  # Adjust threshold based on test (0.5–0.7 usually works well)
+                filtered_rects.append((x, y, w, h))
+        human_detected = len(filtered_rects) > 0
 
         # --- Print & LCD status logic ---
         if human_detected:
