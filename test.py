@@ -119,13 +119,13 @@ def monitoring_loop():
         prev_gray = gray
 
         # Human Detection
-        # rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
-        rects, weights = hog.detectMultiScale(
-            frame,
-            winStride=(8, 8),
-            padding=(16, 16),
-            scale=1.05
-        )
+        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
+        # rects, weights = hog.detectMultiScale(
+        #     frame,
+        #     winStride=(8, 8),
+        #     padding=(16, 16),
+        #     scale=1.05
+        # )
 
         filtered_rects = []
         for i, (x, y, w, h) in enumerate(rects):
