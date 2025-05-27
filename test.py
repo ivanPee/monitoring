@@ -22,8 +22,12 @@ app = Flask(__name__)
 camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera_lock = threading.Lock()
 
-# --- Background Subtractor for motion detection ---
+# --- Background Subtractor ---
 back_sub = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
+
+# --- HOG Human Detector Setup ---
+hog = cv2.HOGDescriptor()
+hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 # --- Control Variables ---
 countdown_started = False
@@ -131,9 +135,9 @@ def monitoring_loop():
             lcd.clear()
             lcd.write_string("Occupied")
             time.sleep(1)  # Slight delay to reduce LCD flicker
-            continue  # Skip the rest of the loop (no countdown, no checks)
+            continue  # Skip rest (no countdown)
 
-        # Room is NOT occupied, proceed with logic
+        # Room NOT occupied
         if light_on:
             if not countdown_started:
                 countdown_started = True
@@ -146,7 +150,7 @@ def monitoring_loop():
 
         time.sleep(2)
 
-# --- Video Streaming with green object framing ---
+# --- Video Streaming with human detection and green boxes ---
 def gen_frames():
     while True:
         with camera_lock:
@@ -155,15 +159,15 @@ def gen_frames():
             break
 
         frame = cv2.resize(frame, (320, 240))
-        fg_mask = back_sub.apply(frame)
 
-        # Find contours on foreground mask
-        contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Run human detection (HOG) on resized frame
+        rects, weights = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
 
-        for cnt in contours:
-            if cv2.contourArea(cnt) > 500:  # filter out small noise
-                x, y, w, h = cv2.boundingRect(cnt)
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # green box
+        # Draw green rectangles around detected humans
+        for (x, y, w, h) in rects:
+            # Optionally filter by weight threshold to reduce false positives
+            if weights is None or weights[0] > 0.5:
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         frame_bytes = buffer.tobytes()
