@@ -81,7 +81,7 @@ def buzzer_alert():
 def countdown_and_buzz():
     global countdown_started, stop_countdown_flag
 
-    print("Light detected! Starting countdown...")
+    print("Object detected! Starting countdown...")
 
     for i in range(60, 0, -1):
         if stop_countdown_flag:
@@ -117,21 +117,28 @@ def monitoring_loop():
             continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        brightness = gray.mean()
-        print(f"Brightness: {brightness:.2f}")
+        blurred = cv2.GaussianBlur(gray, (21, 21), 0)
+        _, thresh = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        light_on = brightness > 110
+        object_detected = False
+        for contour in contours:
+            if cv2.contourArea(contour) < 500:
+                continue
+            object_detected = True
+            (x, y, w, h) = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
         status = check_schedule_status(room_id)
-        print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
+        print(f"Status: {status}, Object Detected: {object_detected}")
 
         if status == "Occupied":
             lcd.clear()
             lcd.write_string("Occupied")
-            time.sleep(1)  # Slight delay to reduce LCD flicker
-            continue  # Skip the rest of the loop (no countdown, no checks)
+            time.sleep(1)
+            continue
 
-        # Room is NOT occupied, proceed with logic
-        if light_on:
+        if object_detected:
             if not countdown_started:
                 countdown_started = True
                 stop_countdown_flag = False
@@ -150,6 +157,18 @@ def gen_frames():
             success, frame = camera.read()
         if not success:
             break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (21, 21), 0)
+        _, thresh = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            if cv2.contourArea(contour) < 500:
+                continue
+            (x, y, w, h) = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
         frame = cv2.resize(frame, (320, 240))
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         frame_bytes = buffer.tobytes()
