@@ -136,6 +136,7 @@ def monitoring_loop():
 
         # If occupied, skip flagging
         if status == "Occupied":
+            set_lcd_status("Occupied...")
             time.sleep(1)
             continue
 
