@@ -7,12 +7,7 @@ import requests
 import datetime
 from flask import Flask, Response
 import atexit
-import json
-import logging
-import threading
-
-# Setup logging for easier debugging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(message)s')
+import numpy as np
 
 # --- GPIO and LCD setup ---
 BUZZER_PIN = 18
@@ -28,87 +23,68 @@ app = Flask(__name__)
 camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera_lock = threading.Lock()
 
+# --- MobileNet SSD for person detection ---
+net = cv2.dnn.readNetFromCaffe(
+    cv2.data.haarcascades + "../dnn/deploy.prototxt",
+    cv2.data.haarcascades + "../dnn/res10_300x300_ssd_iter_140000.caffemodel"
+)
+CONFIDENCE_THRESHOLD = 0.5
+
+def detect_person(frame):
+    blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0,
+                                 (300, 300), (104.0, 177.0, 123.0))
+    net.setInput(blob)
+    detections = net.forward()
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        class_id = int(detections[0, 0, i, 1])
+        if confidence > CONFIDENCE_THRESHOLD and class_id == 15:  # 15 is 'person' class in COCO
+            return True
+    return False
+
 # --- Control Variables ---
 countdown_started = False
 stop_countdown_flag = False
 room_id = None
-room_id_lock = threading.Lock()  # To protect access to room_id
 
-# Common headers for HTTP requests (avoid disconnections)
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (compatible; MonitoringBot/1.0)'
-}
-
-# --- Get Room ID ---
+# --- Room ID ---
 def get_room_id_by_stream_url():
     global room_id
-    url = "http://192.168.1.4/monitoring/ajax/get_room_id.php?code=RM123MB"
     try:
-        res = requests.get(url, headers=HEADERS, timeout=5)
-        res.raise_for_status()
-        data = res.json()
-        rid = data.get('room_id')
-        if rid:
-            with room_id_lock:
-                room_id = rid
-            logging.info(f"Room ID obtained: {room_id}")
-        else:
-            logging.warning(f"Room ID not found in response: {data}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error getting room_id with requests: {e}")
-    except json.JSONDecodeError:
-        logging.error(f"Failed to parse JSON from response: {res.text}")
+        res = requests.get('http://192.168.1.13/monitoring/ajax/get_room_id.php', params={
+            'code': 'RM123MB'
+        })
+        if res.status_code == 200:
+            room_id = res.json().get('room_id')
+            print("Room ID:", room_id)
+    except Exception as e:
+        print("Error getting room_id:", e)
 
 # --- Check Schedule ---
-def check_schedule_status(rid):
+def check_schedule_status(room_id):
     now = datetime.datetime.now()
-    # Adjusting weekday to 1-7 with Monday=1 ... Sunday=7
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
-
     try:
-        res = requests.get(
-            'http://192.168.1.4/monitoring/ajax/check_schedule.php',
-            params={
-                'room_id': rid,
-                'schedule_day': current_day,
-                'current_time': current_time
-            },
-            headers=HEADERS,
-            timeout=5
-        )
-        res.raise_for_status()
+        res = requests.get('http://192.168.1.13/monitoring/ajax/check_schedule.php', params={
+            'room_id': room_id,
+            'schedule_day': current_day,
+            'current_time': current_time
+        })
         data = res.json()
-        if data.get('success'):
-            return data.get('status')
-        else:
-            logging.warning(f"Schedule check failed: {data}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Schedule check error: {e}")
+        if data['success']:
+            return data['status']
+    except Exception as e:
+        print("Schedule check error:", e)
     return None
 
 # --- Flag Schedule ---
 def handle_detection_action():
-    with room_id_lock:
-        rid = room_id
-    if not rid:
-        logging.warning("No room_id set, cannot flag schedule.")
-        return
-
     try:
-        res = requests.post(
-            'http://192.168.1.4/monitoring/ajax/flag_schedule.php',
-            json={'room_id': rid},
-            headers=HEADERS,
-            timeout=5
-        )
-        if res.ok:
-            message = res.json().get('message')
-            logging.info(f"Flagged schedule: {message}")
-        else:
-            logging.error(f"Failed to flag schedule, status code: {res.status_code}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error flagging schedule: {e}")
+        res = requests.post('http://192.168.1.13/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
+        print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
+    except Exception as e:
+        print("Error flagging schedule:", e)
 
 # --- Alert and Countdown ---
 def buzzer_alert():
@@ -122,12 +98,11 @@ def buzzer_alert():
 
 def countdown_and_buzz():
     global countdown_started, stop_countdown_flag
-
-    logging.info("Light detected! Starting countdown...")
+    print("Light & Person detected! Starting countdown...")
 
     for i in range(60, 0, -1):
         if stop_countdown_flag:
-            logging.info("Detection Stopped.")
+            print("Detection Stopped.")
             lcd.clear()
             lcd.write_string("Countdown cancelled")
             time.sleep(2)
@@ -148,37 +123,25 @@ def countdown_and_buzz():
 # --- Monitoring Thread ---
 def monitoring_loop():
     global countdown_started, stop_countdown_flag
-
     lcd.clear()
     lcd.write_string("Monitoring...")
-
-    # Initial fetch of room_id
     get_room_id_by_stream_url()
 
     while True:
         with camera_lock:
             ret, frame = camera.read()
         if not ret:
-            logging.warning("Failed to read frame from camera.")
-            time.sleep(1)
             continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         brightness = gray.mean()
-        logging.debug(f"Brightness: {brightness:.2f}")
-
+        person_present = detect_person(frame)
         light_on = brightness > 80
 
-        with room_id_lock:
-            rid = room_id
-        if rid is None:
-            logging.warning("Room ID not set, retrying...")
-            get_room_id_by_stream_url()
-            time.sleep(5)
-            continue
+        print(f"Brightness: {brightness:.2f}, Person: {person_present}, Light: {'ON' if light_on else 'OFF'}")
 
-        status = check_schedule_status(rid)
-        logging.info(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
+        status = check_schedule_status(room_id)
+        print(f"Status: {status}")
 
         if status == "Occupied":
             lcd.clear()
@@ -186,11 +149,12 @@ def monitoring_loop():
             time.sleep(1)
             continue
 
-        if light_on:
+        # Room is not occupied
+        if person_present and light_on:
             if not countdown_started:
                 countdown_started = True
                 stop_countdown_flag = False
-                threading.Thread(target=countdown_and_buzz, daemon=True).start()
+                threading.Thread(target=countdown_and_buzz).start()
         else:
             if countdown_started:
                 stop_countdown_flag = True
@@ -204,13 +168,9 @@ def gen_frames():
         with camera_lock:
             success, frame = camera.read()
         if not success:
-            logging.warning("Failed to read frame for streaming.")
             break
         frame = cv2.resize(frame, (320, 240))
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-        if not ret:
-            logging.warning("Failed to encode frame.")
-            continue
         frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -237,10 +197,8 @@ def cleanup():
     lcd.clear()
     camera.release()
     GPIO.cleanup()
-    logging.info("Cleanup done. Exiting.")
 
 # --- Main ---
 if __name__ == '__main__':
-    monitoring_thread = threading.Thread(target=monitoring_loop, daemon=True)
-    monitoring_thread.start()
+    threading.Thread(target=monitoring_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
