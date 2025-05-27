@@ -106,8 +106,7 @@ def monitoring_loop():
         brightness = gray.mean()
 
         status = check_schedule_status(room_id)
-        print(f"[INFO] BRIGHTNESS: {brightness}")
-        light_on = brightness > 100
+        light_on = brightness > 110
         motion_detected = False
         human_detected = False
 
