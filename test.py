@@ -119,7 +119,7 @@ def monitoring_loop():
         prev_gray = gray
 
         # Human Detection
-        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
+        rects, weights = hog.detectMultiScale(cv2.resize(frame, (640, 480), winStride=(8,8), padding=(8,8), scale=1.05)
         human_detected = len(rects) > 0
         
         # rects, weights = hog.detectMultiScale(
