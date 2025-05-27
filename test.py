@@ -24,6 +24,8 @@ camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 camera_lock = threading.Lock()
 
 # --- MobileNet SSD for person detection ---
+deploy_path = "deploy.prototxt"
+weights_path = "res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNetFromCaffe(
     cv2.data.haarcascades + "../dnn/deploy.prototxt",
     cv2.data.haarcascades + "../dnn/res10_300x300_ssd_iter_140000.caffemodel"
