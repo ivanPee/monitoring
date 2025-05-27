@@ -118,24 +118,24 @@ def monitoring_loop():
             motion_detected = motion_area > 500
         prev_gray = gray
 
-        # Human Detection
-        rects, weights = hog.detectMultiScale(cv2.resize(frame, (640, 480)), winStride=(8,8), padding=(16,16), scale=1.05)
-        human_detected = len(rects) > 0
-        
-        # rects, weights = hog.detectMultiScale(
-        #     frame,
-        #     winStride=(8, 8),
-        #     padding=(16, 16),
-        #     scale=1.05
-        # )
+        # Human Detection (improved settings)
+        resized = cv2.resize(frame, (320, 240))
+        gray_resized = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
 
-        # filtered_rects = []
-        # for i, (x, y, w, h) in enumerate(rects):
-        #     if weights[i] > 0.6:  # Adjust threshold based on test (0.5–0.7 usually works well)
-        #         filtered_rects.append((x, y, w, h))
-        # human_detected = len(filtered_rects) > 0
+        rects, weights = hog.detectMultiScale(
+            gray_resized,
+            winStride=(4, 4),
+            padding=(8, 8),
+            scale=1.01
+        )
 
-        # --- Print & LCD status logic ---
+        filtered_rects = []
+        for i, (x, y, w, h) in enumerate(rects):
+            if weights[i] > 0.3:
+                filtered_rects.append((x, y, w, h))
+
+        human_detected = len(filtered_rects) > 0
+
         if human_detected:
             set_lcd_status("Human detected")
         elif motion_detected:
@@ -147,20 +147,17 @@ def monitoring_loop():
 
         print(f"[INFO] Human: {human_detected}, Motion: {motion_detected}, Light: {light_on}, Status: {status}")
 
-        # If occupied, skip flagging
         if status == "Occupied":
             set_lcd_status("Occupied...")
             time.sleep(1)
             continue
 
-        # If human detected, flag immediately
         if human_detected:
             flag_schedule()
             buzzer_alert()
             time.sleep(5)
             continue
 
-        # Motion consistency logic
         if motion_detected:
             if not motion_timer_start:
                 motion_timer_start = time.time()
@@ -185,10 +182,16 @@ def gen_frames():
 
         frame = cv2.resize(frame, (320, 240))
 
-        # Human detection boxes
-        rects, _ = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
-        for (x, y, w, h) in rects:
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
+        rects, weights = hog.detectMultiScale(
+            frame,
+            winStride=(4, 4),
+            padding=(8, 8),
+            scale=1.01
+        )
+
+        for i, (x, y, w, h) in enumerate(rects):
+            if weights[i] > 0.3:
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
