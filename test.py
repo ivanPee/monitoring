@@ -7,6 +7,9 @@ import requests
 import datetime
 from flask import Flask, Response
 import atexit
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 # --- GPIO and LCD setup ---
 BUZZER_PIN = 18
@@ -27,23 +30,42 @@ countdown_started = False
 stop_countdown_flag = False
 room_id = None
 
-# --- Room ID ---
+# --- Get Room ID using Selenium ---
 def get_room_id_by_stream_url():
     global room_id
+
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+
+    driver = webdriver.Chrome(options=options)
+
     try:
-        res = requests.get('https://monitoring.42web.io/ajax/get_room_id.php', params={
-            'code': 'RM123MB'
-        })
-        if res.status_code == 200:
-            room_id = res.json().get('room_id')
+        url = "https://monitoring.42web.io/ajax/get_room_id.php?code=RM123MB"
+        driver.get(url)
+
+        # Let JavaScript run
+        time.sleep(3)
+
+        # Extract room_id from the page source
+        page_source = driver.page_source
+        try:
+            data = driver.find_element(By.TAG_NAME, "pre").text
+            room_id = data.get("room_id")
             print("Room ID:", room_id)
+        except Exception as e:
+            print("Failed to extract JSON from browser:", e)
+
     except Exception as e:
-        print("Error getting room_id:", e)
+        print("Error with Selenium:", e)
+
+    finally:
+        driver.quit()
 
 # --- Check Schedule ---
 def check_schedule_status(room_id):
     now = datetime.datetime.now()
-    
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
 
