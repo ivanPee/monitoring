@@ -173,7 +173,7 @@ def gen_frames():
 
         # Human detection boxes
         rects, weights = hog.detectMultiScale(
-            frame_resized,
+            frame,
             winStride=(4, 4),
             padding=(8, 8),
             scale=1.02
