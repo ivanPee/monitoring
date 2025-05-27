@@ -33,6 +33,14 @@ motion_timer_start = None
 motion_flagged = False
 last_lcd_status = ""
 
+# --- Detection Timers ---
+human_timer_start = None
+motion_timer_start = None
+light_timer_start = None
+human_flagged = False
+motion_flagged = False
+light_flagged = False
+
 # --- LCD display update ---
 def set_lcd_status(text):
     global last_lcd_status
@@ -146,23 +154,52 @@ def monitoring_loop():
 
         # If human detected, flag immediately
         if human_detected:
-            flag_schedule()
-            buzzer_alert()
-            time.sleep(5)
-            continue
-
-        # Motion consistency logic
+            lcd.clear()
+            lcd.write_string("Human detected")
+            print("[INFO] Human detected")
+        
+            if not human_timer_start:
+                human_timer_start = time.time()
+            elif time.time() - human_timer_start >= 20 and not human_flagged:
+                human_flagged = True
+                print("[ALERT] Human > 20s. Flagging schedule...")
+                flag_schedule()
+                buzzer_alert()
+        else:
+            human_timer_start = None
+            human_flagged = False
+        
         if motion_detected:
+            lcd.clear()
+            lcd.write_string("Motion detected")
+            print("[INFO] Motion detected")
+        
             if not motion_timer_start:
                 motion_timer_start = time.time()
-            elif time.time() - motion_timer_start >= 60 and not motion_flagged:
+            elif time.time() - motion_timer_start >= 20 and not motion_flagged:
                 motion_flagged = True
-                print("[ALERT] Motion > 60s. Flagging schedule...")
+                print("[ALERT] Motion > 20s. Flagging schedule...")
                 flag_schedule()
                 buzzer_alert()
         else:
             motion_timer_start = None
             motion_flagged = False
+        
+        if light_on:
+            lcd.clear()
+            lcd.write_string("Light ON")
+            print("[INFO] Light ON")
+        
+            if not light_timer_start:
+                light_timer_start = time.time()
+            elif time.time() - light_timer_start >= 60 and not light_flagged:
+                light_flagged = True
+                print("[ALERT] Light ON > 60s. Flagging schedule...")
+                flag_schedule()
+                buzzer_alert()
+        else:
+            light_timer_start = None
+            light_flagged = False
 
         time.sleep(1)
 
