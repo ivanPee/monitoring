@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Room Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+</head>
+<body>
+  <h2>Room Monitor</h2>
+  <video id="video" width="320" height="240" autoplay muted></video>
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <p id="status">Loading...</p>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const statusText = document.getElementById("status");
+
+    let model, countdown = null;
+
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+    }
+
+    async function checkSchedule() {
+      const res = await fetch('http://192.168.1.4/monitoring/ajax/check_schedule.php?room_id=123');
+      const data = await res.json();
+      return data.status || 'Unknown';
+    }
+
+    async function sendAlert() {
+      await fetch('http://192.168.1.4/monitoring/ajax/flag_schedule.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: "123" })
+      });
+      alert('Alert sent to backend!');
+    }
+
+    function estimateBrightness(imageData) {
+      let total = 0;
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        total += (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+      }
+      return total / (imageData.data.length / 4);
+    }
+
+    async function analyze() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const brightness = estimateBrightness(imgData);
+      const lightOn = brightness > 80;
+
+      const predictions = await model.detect(video);
+      const personDetected = predictions.some(p => p.class === 'person');
+
+      const status = await checkSchedule();
+      statusText.innerText = `Status: ${status} | Person: ${personDetected} | Light: ${lightOn}`;
+
+      if (status === "Vacant" && (personDetected || lightOn)) {
+        if (!countdown) {
+          let i = 60;
+          countdown = setInterval(async () => {
+            statusText.innerText = `⚠ ALERT in ${i--}s`;
+            if (i < 0) {
+              clearInterval(countdown);
+              countdown = null;
+              await sendAlert();
+            }
+          }, 1000);
+        }
+      } else {
+        if (countdown) {
+          clearInterval(countdown);
+          countdown = null;
+        }
+      }
+
+      requestAnimationFrame(analyze);
+    }
+
+    async function main() {
+      await initCamera();
+      model = await cocoSsd.load();
+      statusText.innerText = "Monitoring...";
+      requestAnimationFrame(analyze);
+    }
+
+    main();
+  </script>
+</body>
+</html>
