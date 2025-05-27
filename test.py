@@ -16,7 +16,6 @@ GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
 lcd = CharLCD('PCF8574', 0x27)
 lcd.clear()
-lcd.write_string("Starting...")
 
 # --- Flask App and Camera ---
 app = Flask(__name__)
@@ -28,29 +27,20 @@ hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 # --- Control Variables ---
-countdown_started = False
-stop_countdown_flag = False
 room_id = None
-
-# --- For motion detection ---
 prev_gray = None
+motion_timer_start = None
+motion_flagged = False
+last_lcd_status = ""
 
-# --- Shared status for LCD display ---
-lcd_status_lock = threading.Lock()
-lcd_status_text = "Starting..."
-
+# --- LCD display update ---
 def set_lcd_status(text):
-    global lcd_status_text
-    with lcd_status_lock:
-        lcd_status_text = text
-
-def update_lcd():
-    while True:
-        with lcd_status_lock:
-            text = lcd_status_text
+    global last_lcd_status
+    if text != last_lcd_status:
         lcd.clear()
         lcd.write_string(text)
-        time.sleep(1)  # update every 1 sec
+        print("[LCD] " + text)
+        last_lcd_status = text
 
 # --- Room ID ---
 def get_room_id_by_stream_url():
@@ -65,13 +55,11 @@ def get_room_id_by_stream_url():
     except Exception as e:
         print("Error getting room_id:", e)
 
-# --- Check Schedule ---
+# --- Check Schedule Status ---
 def check_schedule_status(room_id):
     now = datetime.datetime.now()
-    
     current_day = (now.weekday() + 1) % 7 or 7
     current_time = now.strftime("%H:%M:%S")
-
     try:
         res = requests.get('http://192.168.1.4/monitoring/ajax/check_schedule.php', params={
             'room_id': room_id,
@@ -86,48 +74,26 @@ def check_schedule_status(room_id):
     return None
 
 # --- Flag Schedule ---
-def handle_detection_action():
+def flag_schedule():
     try:
         res = requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
         print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
     except Exception as e:
         print("Error flagging schedule:", e)
 
-# --- Alert and Countdown ---
+# --- Buzzer Alert ---
 def buzzer_alert():
     GPIO.output(BUZZER_PIN, GPIO.HIGH)
-    set_lcd_status("Buzzing now!")
-    time.sleep(10)
+    set_lcd_status("Buzzing!")
+    time.sleep(5)
     GPIO.output(BUZZER_PIN, GPIO.LOW)
-    set_lcd_status("Monitoring...")
-
-def countdown_and_buzz():
-    global countdown_started, stop_countdown_flag
-
-    print("Light detected! Starting countdown...")
-
-    for i in range(60, 0, -1):
-        if stop_countdown_flag:
-            print("Detection Stopped.")
-            set_lcd_status("Countdown cancelled")
-            time.sleep(2)
-            set_lcd_status("Monitoring...")
-            countdown_started = False
-            stop_countdown_flag = False
-            return
-
-        set_lcd_status(f"Countdown: {i}s")
-        time.sleep(1)
-
-    handle_detection_action()
-    buzzer_alert()
-    countdown_started = False
 
 # --- Monitoring Thread ---
 def monitoring_loop():
-    global countdown_started, stop_countdown_flag, prev_gray
-    set_lcd_status("Monitoring...")
+    global prev_gray, motion_timer_start, motion_flagged
+
     get_room_id_by_stream_url()
+    set_lcd_status("Monitoring...")
 
     while True:
         with camera_lock:
@@ -135,29 +101,28 @@ def monitoring_loop():
         if not ret:
             continue
 
-        resized_frame = cv2.resize(frame, (320, 240))
-        gray = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2GRAY)
+        frame_resized = cv2.resize(frame, (320, 240))
+        gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
         brightness = gray.mean()
-        # print(f"Brightness: {brightness:.2f}")
 
-        light_on = brightness > 80
         status = check_schedule_status(room_id)
-        # print(f"Status: {status}, Light: {'ON' if light_on else 'OFF'}")
-
-        # Simple motion detection by frame difference
+        light_on = brightness > 80
         motion_detected = False
+        human_detected = False
+
+        # Motion Detection
         if prev_gray is not None:
             diff = cv2.absdiff(gray, prev_gray)
             _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
             motion_area = cv2.countNonZero(thresh)
-            motion_detected = motion_area > 500  # Tune threshold if needed
+            motion_detected = motion_area > 500
         prev_gray = gray
 
-        # Human detection on resized frame
-        rects, weights = hog.detectMultiScale(resized_frame, winStride=(8,8), padding=(8,8), scale=1.05)
+        # Human Detection
+        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(8,8), scale=1.05)
         human_detected = len(rects) > 0
 
-        # Update LCD status by priority: Human > Motion > Light > Normal
+        # --- Print & LCD status logic ---
         if human_detected:
             set_lcd_status("Human detected")
         elif motion_detected:
@@ -167,23 +132,36 @@ def monitoring_loop():
         else:
             set_lcd_status("Monitoring...")
 
+        print(f"[INFO] Human: {human_detected}, Motion: {motion_detected}, Light: {light_on}, Status: {status}")
+
+        # If occupied, skip flagging
         if status == "Occupied":
-            set_lcd_status("Occupied")
             time.sleep(1)
             continue
 
-        # Countdown logic on light
-        if light_on and not countdown_started:
-            countdown_started = True
-            stop_countdown_flag = False
-            threading.Thread(target=countdown_and_buzz).start()
-        elif not light_on and countdown_started:
-            stop_countdown_flag = True
-            countdown_started = False
+        # If human detected, flag immediately
+        if human_detected:
+            flag_schedule()
+            buzzer_alert()
+            time.sleep(5)
+            continue
+
+        # Motion consistency logic
+        if motion_detected:
+            if not motion_timer_start:
+                motion_timer_start = time.time()
+            elif time.time() - motion_timer_start >= 60 and not motion_flagged:
+                motion_flagged = True
+                print("[ALERT] Motion > 60s. Flagging schedule...")
+                flag_schedule()
+                buzzer_alert()
+        else:
+            motion_timer_start = None
+            motion_flagged = False
 
         time.sleep(1)
 
-# --- Video Streaming with human detection and green boxes ---
+# --- Video Feed with Human Boxes ---
 def gen_frames():
     while True:
         with camera_lock:
@@ -193,17 +171,13 @@ def gen_frames():
 
         frame = cv2.resize(frame, (320, 240))
 
-        # Detect humans and draw green boxes
-        rects, weights = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
-        for i, (x, y, w, h) in enumerate(rects):
-            # You can filter by weights[i] if needed (e.g., >0.5)
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Human detection boxes
+        rects, _ = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
+        for (x, y, w, h) in rects:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
         ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-        frame_bytes = buffer.tobytes()
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
         time.sleep(0.1)
 
 @app.route('/video_feed')
@@ -215,15 +189,11 @@ def index():
     return """
     <html>
         <body>
-            <h1>Camera Stream</h1>
-            <img src="/video_feed" width="640" height="480" />
+            <h1>Live Camera</h1>
+            <img src="/video_feed" />
         </body>
     </html>
     """
-
-# --- Start LCD updater thread ---
-lcd_thread = threading.Thread(target=update_lcd, daemon=True)
-lcd_thread.start()
 
 # --- Cleanup ---
 @atexit.register
@@ -232,7 +202,7 @@ def cleanup():
     camera.release()
     GPIO.cleanup()
 
-# --- Main ---
+# --- Run ---
 if __name__ == '__main__':
     threading.Thread(target=monitoring_loop, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
