@@ -49,7 +49,13 @@ def get_room_id_by_stream_url():
             timeout=10
         )
         res.raise_for_status()
-        data = res.json()
+
+        try:
+            data = res.json()
+        except ValueError as ve:
+            logging.error(f"Invalid JSON response: {res.text}")
+            return
+
         rid = data.get('room_id')
         if rid:
             with room_id_lock:
@@ -57,6 +63,7 @@ def get_room_id_by_stream_url():
             logging.info(f"Room ID obtained: {room_id}")
         else:
             logging.warning(f"Room ID not found in response: {data}")
+
     except requests.exceptions.RequestException as e:
         logging.error(f"Error getting room_id: {e}")
 
