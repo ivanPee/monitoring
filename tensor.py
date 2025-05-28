@@ -21,7 +21,7 @@ floating_model = input_details[0]['dtype'] == np.float32
 PERSON_CLASS_ID = 0
 
 # Initialize webcam
-camera = cv2.VideoCapture(0)
+camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
 
 def detect_humans(frame):
     img = cv2.resize(frame, (width, height))
