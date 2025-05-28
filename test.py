@@ -170,7 +170,7 @@ def monitoring_loop():
         if human_detected:
             flag_schedule("Human")
             buzzer_alert()
-            time.sleep(5)
+            # time.sleep(5)
             continue
 
         # Motion consistency logic
