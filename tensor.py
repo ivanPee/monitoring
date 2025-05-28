@@ -7,7 +7,7 @@ import platform
 app = Flask(__name__)
 
 # Load TFLite model
-interpreter = tflite.Interpreter(model_path="models/mobilenet_ssd_v2_fpnlite.tflite")
+interpreter = tflite.Interpreter(model_path="detect.tflite")
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
