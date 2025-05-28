@@ -32,6 +32,10 @@ prev_gray = None
 motion_timer_start = None
 motion_flagged = False
 last_lcd_status = ""
+motion_timer_start = None
+motion_flagged = False
+light_timer_start = None
+light_flagged = False
 
 # --- LCD display update ---
 def set_lcd_status(text):
@@ -74,9 +78,9 @@ def check_schedule_status(room_id):
     return None
 
 # --- Flag Schedule ---
-def flag_schedule():
+def flag_schedule(detection):
     try:
-        res = requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id})
+        res = requests.post('http://192.168.1.4/monitoring/ajax/flag_schedule.php', json={'room_id': room_id, detection:detection})
         print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
     except Exception as e:
         print("Error flagging schedule:", e)
@@ -91,6 +95,7 @@ def buzzer_alert():
 # --- Monitoring Thread ---
 def monitoring_loop():
     global prev_gray, motion_timer_start, motion_flagged
+    global light_timer_start, light_flagged
 
     get_room_id_by_stream_url()
     set_lcd_status("Monitoring...")
@@ -163,7 +168,7 @@ def monitoring_loop():
 
         # If human detected, flag immediately
         if human_detected:
-            flag_schedule()
+            flag_schedule("Human")
             buzzer_alert()
             time.sleep(5)
             continue
@@ -175,11 +180,24 @@ def monitoring_loop():
             elif time.time() - motion_timer_start >= 60 and not motion_flagged:
                 motion_flagged = True
                 print("[ALERT] Motion > 60s. Flagging schedule...")
-                flag_schedule()
+                flag_schedule("Motion")
                 buzzer_alert()
         else:
             motion_timer_start = None
             motion_flagged = False
+
+        # Light consistency logic
+        if light_on:
+            if not light_timer_start:
+                light_timer_start = time.time()
+            elif time.time() - light_timer_start >= 60 and not light_flagged:
+                light_flagged = True
+                print("[ALERT] Light > 60s. Flagging schedule...")
+                flag_schedule("Light")
+                buzzer_alert()
+        else:
+            light_timer_start = None
+            light_flagged = False
 
         time.sleep(1)
 
