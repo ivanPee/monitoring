@@ -80,7 +80,7 @@ def check_schedule_status(room_id):
 # --- Flag Schedule ---
 def flag_schedule(detection):
     try:
-        res = requests.post('http://192.168.239.190/monitoring/ajax/flag_schedule.php', json={'room_id': room_id, detection:detection})
+        res = requests.post('http://192.168.239.190/monitoring/ajax/flag_schedule.php', json={'room_id': room_id, 'detection':detection})
         print("Flagged schedule:", res.json().get('message') if res.ok else res.status_code)
     except Exception as e:
         print("Error flagging schedule:", e)
