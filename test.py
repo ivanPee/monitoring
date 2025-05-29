@@ -158,7 +158,7 @@ def monitoring_loop():
         else:
             set_lcd_status("Monitoring...")
 
-        print(f"[INFO] Human: {human_detected}, Motion: {motion_detected}, Light: {light_on}, Status: {status}")
+        print(f"[INFO] Motion: {motion_detected}, Light: {light_on}, Status: {status}")
 
         # If occupied, skip flagging
         if status == "Occupied":
